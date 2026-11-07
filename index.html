@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#2457c5">
+<meta name="description" content="Split a large PDF into two balanced page-count parts, locally in your browser.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<title>PDF Splitter</title>
+<style>
+:root{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#182230;background:#f4f6fa}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px}
+main{width:min(720px,100%);background:white;border:1px solid #e2e7ef;border-radius:20px;padding:clamp(22px,5vw,40px);box-shadow:0 12px 40px #14213d12}
+h1{font-size:clamp(27px,5vw,36px);margin:0 0 8px}p{line-height:1.55;color:#526071}
+.drop{display:block;border:2px dashed #9aa9bc;border-radius:15px;padding:30px 18px;text-align:center;margin:24px 0;background:#fafcff;cursor:pointer}
+.drop:hover{border-color:#315fbd;background:#f4f8ff}.drop strong{display:block;font-size:18px;margin-bottom:6px}
+input[type=file]{display:none}button{border:0;border-radius:12px;padding:13px 20px;font-size:16px;font-weight:650;cursor:pointer;background:#2457c5;color:white}
+button:disabled{opacity:.45;cursor:not-allowed}.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+#status{margin-top:18px;padding:13px 15px;border-radius:12px;background:#f1f4f8;color:#344256;white-space:pre-wrap;overflow-wrap:anywhere}
+.small{font-size:13px;color:#657386}.warning{border-left:4px solid #d49a28;padding:10px 13px;background:#fff9eb;border-radius:8px;color:#5c4a25;font-size:14px;margin-top:16px}
+.progress{height:8px;background:#e8edf5;border-radius:20px;overflow:hidden;margin-top:14px;display:none}.progress span{display:block;height:100%;width:0;background:#2457c5;transition:width .2s}
+.install{background:#eaf0ff;color:#1d469e}.topline{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
+</style>
+</head>
+<body>
+<main>
+  <div class="topline"><span class="small">PDF TOOL · PRIVATE BY DESIGN</span><button class="install" id="installBtn" hidden>Install app</button></div>
+  <h1>Split a large PDF into 2 parts</h1>
+  <p>Choose a PDF and create two separate PDFs, split as evenly as possible by page count. Your file is processed on your device and is not uploaded to a server.</p>
+  <label class="drop" for="file"><strong>Choose a PDF file</strong><span id="fileLabel">Tap here to select a PDF (including files over 230 MB)</span></label>
+  <input id="file" type="file" accept="application/pdf,.pdf">
+  <div class="row"><button id="split" disabled>Split into 2 PDFs</button><span class="small" id="size"></span></div>
+  <div class="progress" id="progress"><span id="bar"></span></div>
+  <div id="status" role="status">Waiting for a PDF file.</div>
+  <div class="warning"><b>Large-file note:</b> A 230+ MB PDF may need several GB of free memory. For best results use an up-to-date desktop browser with plenty of RAM. The two output sizes may differ because pages can have different sizes.</div>
+  <p class="small">The original PDF is not changed. Install this app from your browser menu or use the Install app button when available.</p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script>
+if ('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+let deferredPrompt; const installBtn=document.getElementById('installBtn');
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;installBtn.hidden=false;});
+installBtn.addEventListener('click',async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;installBtn.hidden=true;});
+window.addEventListener('appinstalled',()=>{installBtn.hidden=true;});
+const fileInput=document.getElementById('file'), splitBtn=document.getElementById('split');
+const statusEl=document.getElementById('status'), sizeEl=document.getElementById('size');
+const label=document.getElementById('fileLabel'), progress=document.getElementById('progress'), bar=document.getElementById('bar');
+let selected=null; const fmt=n=>n>=1024**3?(n/1024**3).toFixed(2)+' GB':(n/1024**2).toFixed(1)+' MB';
+fileInput.addEventListener('change',()=>{selected=fileInput.files[0]||null;splitBtn.disabled=!selected;if(selected){label.textContent=selected.name;sizeEl.textContent=fmt(selected.size);statusEl.textContent='Ready. Select “Split into 2 PDFs”.';}else{label.textContent='Tap here to select a PDF';sizeEl.textContent='';statusEl.textContent='Waiting for a PDF file.';}});
+function download(bytes,name){const blob=new Blob([bytes],{type:'application/pdf'}),url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
+splitBtn.addEventListener('click',async()=>{if(!selected)return;if(!window.PDFLib){statusEl.textContent='PDF library is not available. Connect to the internet once, reload, and try again.';return;}splitBtn.disabled=true;progress.style.display='block';bar.style.width='8%';try{statusEl.textContent='Reading PDF… Large files may take a few minutes.';const bytes=await selected.arrayBuffer();bar.style.width='25%';const source=await PDFLib.PDFDocument.load(bytes,{ignoreEncryption:false,updateMetadata:false});const total=source.getPageCount();if(total<2)throw new Error('This PDF has fewer than 2 pages.');const cut=Math.ceil(total/2);statusEl.textContent=`PDF loaded: ${total} pages.\nCreating Part 1 (pages 1–${cut}) and Part 2 (pages ${cut+1}–${total})…`;const first=await PDFLib.PDFDocument.create(),second=await PDFLib.PDFDocument.create();const p1=await first.copyPages(source,Array.from({length:cut},(_,i)=>i));p1.forEach(p=>first.addPage(p));bar.style.width='55%';const p2=await second.copyPages(source,Array.from({length:total-cut},(_,i)=>i+cut));p2.forEach(p=>second.addPage(p));statusEl.textContent='Building the two PDF files… Keep this tab open.';const [out1,out2]=await Promise.all([first.save(),second.save()]);bar.style.width='90%';const base=selected.name.replace(/\.pdf$/i,'');download(out1,base+'_part1.pdf');setTimeout(()=>download(out2,base+'_part2.pdf'),700);bar.style.width='100%';statusEl.textContent=`Finished.\nPart 1: ${fmt(out1.length)} (${cut} pages)\nPart 2: ${fmt(out2.length)} (${total-cut} pages)\n\nBoth downloads should start automatically.`;}catch(err){console.error(err);statusEl.textContent='Could not split this PDF: '+(err.message||String(err))+'\n\nIf it is encrypted, damaged, or too large for available memory, try an unlocked copy or a computer with more RAM.';bar.style.width='0%';}finally{splitBtn.disabled=!selected;}});
+</script>
+</body></html>

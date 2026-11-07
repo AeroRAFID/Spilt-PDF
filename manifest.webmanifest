@@ -1,0 +1,19 @@
+{
+  "id": "./",
+  "name": "PDF Splitter \u2014 Two Parts",
+  "short_name": "PDF Splitter",
+  "description": "Split a large PDF into two balanced page-count parts on your device.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f6fa",
+  "theme_color": "#2457c5",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
